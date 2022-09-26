@@ -6,14 +6,30 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
-# Category
-# Product
-# CartProduct
-# Cart
-# Order
+class LatestProductsManager:
 
-# Customer
-# Specification
+    @staticmethod
+    def get_products_for_main_page(*args, **kwargs):
+        with_respect_to = kwargs.get('with_respect_to')
+        products = []
+        ct_models = ContentType.objects.filter(model__in=args)
+        for ct_model in ct_models:
+            model_products = ct_model.model_class()._base_manager.all().order_by('-id')[:5]
+            products.extend(model_products)
+        if with_respect_to:
+            ct_model = ContentType.objects.filter(model=with_respect_to)
+            if ct_model.exists():
+                if with_respect_to in args:
+                    return sorted(
+                        products, key=lambda x: x.__class__._meta.model_name.startswith(with_respect_to), reverse=True
+                    )
+        return products
+
+
+class LatestProducts:
+
+    objects = LatestProductsManager()
+
 
 class Category(models.Model):
     name = models.CharField(max_length=255, verbose_name="Categoty name")
@@ -83,7 +99,7 @@ class Customer(models.Model):
     phone = models.CharField(max_length=20, verbose_name="Phone number")
     adress = models.CharField(max_length=255, verbose_name="Adress")
     email = models.EmailField(max_length=255, verbose_name='Email')
-    birthday = models.DateField(help_text = "Customer birthdate", verbose_name='Birthday')
+    birthday = models.DateField(help_text="Customer birthdate", verbose_name='Birthday')
 
     def __str__(self):
         return f"User: {self.user.first_name} {self.user.last_name}"
