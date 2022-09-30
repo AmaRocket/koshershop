@@ -1,10 +1,32 @@
+import sys
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import InMemoryUploadedFile
+from django.urls import reverse
+
+from io import BytesIO
+
+from PIL import Image
 
 User = get_user_model()
 
+def get_product_url(obj, viewname):
+    ct_model = obj.__class__._meta.model_name
+    return reverse(viewname, kwargs={"ct_model": ct_model, "slug": obj.slug})
+
+# ============================================EXCEPTIONS================================================================
+
+class MinResolutionErrorException(Exception):  # Custom exception for validation image resolution
+    ...
+
+
+class MaxResolutionErrorException(Exception):  # Custom exception for validation image resolution
+    ...
+
+
+# ======================================================================================================================
 
 class LatestProductsManager:
 
@@ -27,7 +49,6 @@ class LatestProductsManager:
 
 
 class LatestProducts:
-
     objects = LatestProductsManager()
 
 
@@ -40,6 +61,10 @@ class Category(models.Model):
 
 
 class Product(models.Model):
+    MIN_RESOLUTION = (400, 400)
+    MAX_RESOLUTION = (900, 900)
+    MAX_IMG_SIZE = 3145728
+
     class Meta:
         abstract = True
 
@@ -52,6 +77,21 @@ class Product(models.Model):
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        image = self.image
+        img = Image.open(image)
+        new_img = img.convert("RGB")
+        resized_new_img = new_img.resize((900, 900), Image.ANTIALIAS)
+        filestream = BytesIO()
+        resized_new_img.save(filestream, "JPEG", quailty=90)
+        filestream.seek(0)
+        name = "{}.{}".format(*self.image.name.split("."))
+        self.image = InMemoryUploadedFile(
+            filestream, "ImageField", name, "jpeg/image", sys.getsizeof(filestream), None
+        )
+
+        super().save(*args, **kwargs)
 
 
 class CartProduct(models.Model):
@@ -67,12 +107,28 @@ class CartProduct(models.Model):
         return f"Cart Item: {self.title}"
 
 
+# ================================CATEGORY===============================================================================
+
+class Bread(Product):
+    ingredients = models.TextField(verbose_name="Ingredients", null=True)
+    allergens = models.CharField(max_length=255, verbose_name='Allergens')
+
+    def __str__(self):
+        return f"{self.category.name} : {self.title}"
+
+    def get_absolute_url(self):
+        return get_product_url(self, "product_detail")
+
+
 class Bakery(Product):
     ingredients = models.TextField(verbose_name="Ingredients", null=True)
     allergens = models.CharField(max_length=255, verbose_name='Allergens')
 
     def __str__(self):
         return f"{self.category.name} : {self.title}"
+
+    def get_absolute_url(self):
+        return get_product_url(self, "product_detail")
 
 
 class Cake(Product):
@@ -82,6 +138,24 @@ class Cake(Product):
 
     def __str__(self):
         return f"{self.category.name} : {self.title}"
+
+    def get_absolute_url(self):
+        return get_product_url(self, "product_detail")
+
+
+class SemiFinishedProducts(Product):
+    ingredients = models.TextField(verbose_name="Ingredients", null=True)
+    allergens = models.CharField(max_length=255, verbose_name='Allergens')
+    weight = models.CharField(max_length=255, verbose_name='Weight')
+
+    def __str__(self):
+        return f"{self.category.name} : {self.title}"
+
+    def get_absolute_url(self):
+        return get_product_url(self, "product_detail")
+
+
+# ======================================================================================================================
 
 
 class Cart(models.Model):
