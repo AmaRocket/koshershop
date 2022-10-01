@@ -107,7 +107,7 @@ class CartProduct(models.Model):
         return f"Cart Item: {self.title}"
 
 
-# ================================CATEGORY===============================================================================
+# ================================C A T E G O R Y=======================================================================
 
 class Bread(Product):
     ingredients = models.TextField(verbose_name="Ingredients", null=True)
