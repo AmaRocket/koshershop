@@ -12,9 +12,14 @@ from PIL import Image
 
 User = get_user_model()
 
+def get_models_for_count(*model_names):
+    return [models.Count(model_name) for model_name in model_names]
+
+
 def get_product_url(obj, viewname):
     ct_model = obj.__class__._meta.model_name
     return reverse(viewname, kwargs={"ct_model": ct_model, "slug": obj.slug})
+
 
 # ============================================EXCEPTIONS================================================================
 
@@ -51,10 +56,29 @@ class LatestProductsManager:
 class LatestProducts:
     objects = LatestProductsManager()
 
+class CategoryManager(models.Manager):
+
+    CATEGORY_NAME_COUNT_NAME = {
+        "Bakery": "bakery__count",
+        "Bread": "bakery__count",
+        "Cake": "cake__count",
+        "SemiFinishedProducts": "semifinishedproducts__count"
+    }
+    
+    def get_queryset(self):
+        return super().get_queryset()
+
+    def get_categoryes_for_left_sidebar(self):
+        models = get_models_for_count("bakery", "bread", "cake", "semifinishedproducts")
+        qs = list(self.get_queryset().annotate(*models).values())
+        return [dict(name=c["name"], slug=c["slug"], count=c[self.CATEGORY_NAME_COUNT_NAME[c["name"]]]) for c in qs]
+
+
 
 class Category(models.Model):
     name = models.CharField(max_length=255, verbose_name="Categoty name")
     slug = models.SlugField(unique=True)
+    objects = CategoryManager()
 
     def __str__(self):
         return self.name
@@ -94,47 +118,44 @@ class Product(models.Model):
         super().save(*args, **kwargs)
 
 
-class CartProduct(models.Model):
-    user = models.ForeignKey('Customer', verbose_name="Customer", on_delete=models.CASCADE)
-    cart = models.ForeignKey("Cart", verbose_name="Cart", on_delete=models.CASCADE, related_name="related_products")
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
-    content_object = GenericForeignKey('content_type', 'object_id')
-    quantity = models.PositiveIntegerField(default=1)
-    final_price = models.DecimalField(max_digits=9, decimal_places=2, verbose_name="Total price")
-
-    def __str__(self):
-        return f"Cart Item: {self.title}"
-
-
 # ================================C A T E G O R Y=======================================================================
-
-class Bread(Product):
-    ingredients = models.TextField(verbose_name="Ingredients", null=True)
-    allergens = models.CharField(max_length=255, verbose_name='Allergens')
-
-    def __str__(self):
-        return f"{self.category.name} : {self.title}"
-
-    def get_absolute_url(self):
-        return get_product_url(self, "product_detail")
-
 
 class Bakery(Product):
     ingredients = models.TextField(verbose_name="Ingredients", null=True)
-    allergens = models.CharField(max_length=255, verbose_name='Allergens')
+    allergens = models.BooleanField(default=True, verbose_name="Allergens")
+    allergens_volume = models.CharField(max_length=255, verbose_name='Allergens volume', null=True, blank=True)
 
     def __str__(self):
         return f"{self.category.name} : {self.title}"
 
     def get_absolute_url(self):
         return get_product_url(self, "product_detail")
+
+    # @property
+    # def allergens(self):
+    #     if self.allergens:
+    #         return "Yes"
+    #     return "No"
+
+class Bread(Product):
+    ingredients = models.TextField(verbose_name="Ingredients", null=True)
+    allergens = models.BooleanField(default=True, verbose_name="Allergens")
+    allergens_volume = models.CharField(max_length=255, verbose_name='Allergens volume', null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.category.name} : {self.title}"
+
+    def get_absolute_url(self):
+        return get_product_url(self, "product_detail")
+
+
 
 
 class Cake(Product):
     ingredients = models.TextField(verbose_name="Ingredients", null=True)
-    allergens = models.CharField(max_length=255, verbose_name='Allergens')
-    weight = models.CharField(max_length=255, verbose_name='Weight')
+    allergens = models.BooleanField(default=True, verbose_name="Allergens")
+    allergens_volume = models.CharField(max_length=255, verbose_name='Allergens volume', null=True, blank=True)
+    weight = models.CharField(max_length=255, verbose_name='Weight (kg)')
 
     def __str__(self):
         return f"{self.category.name} : {self.title}"
@@ -145,8 +166,9 @@ class Cake(Product):
 
 class SemiFinishedProducts(Product):
     ingredients = models.TextField(verbose_name="Ingredients", null=True)
-    allergens = models.CharField(max_length=255, verbose_name='Allergens')
-    weight = models.CharField(max_length=255, verbose_name='Weight')
+    allergens = models.BooleanField(default=True, verbose_name="Allergens")
+    allergens_volume = models.CharField(max_length=255, verbose_name='Allergens volume', null=True, blank=True)
+    weight = models.CharField(max_length=255, verbose_name='Weight (kg)')
 
     def __str__(self):
         return f"{self.category.name} : {self.title}"
@@ -157,12 +179,26 @@ class SemiFinishedProducts(Product):
 
 # ======================================================================================================================
 
+class CartProduct(models.Model):
+    user = models.ForeignKey('Customer', verbose_name="Customer", on_delete=models.CASCADE)
+    cart = models.ForeignKey("Cart", verbose_name="Cart", on_delete=models.CASCADE, related_name="related_products")
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+    quantity = models.PositiveIntegerField(default=1)
+    final_price = models.DecimalField(max_digits=9, decimal_places=2, verbose_name="Total price")
+
+    def __str__(self):
+        return f"Cart Item: {self.content_object.title} (for cart)"
+
 
 class Cart(models.Model):
     owner = models.ForeignKey("Customer", verbose_name="Owner", on_delete=models.CASCADE)
     products = models.ManyToManyField(CartProduct, blank=True, related_name="related_cart")
     total_products = models.PositiveIntegerField(default=0)
     final_price = models.DecimalField(max_digits=9, decimal_places=2, verbose_name="Total price")
+    in_order = models.BooleanField(default=False)
+    for_anonymous_user = models.BooleanField(default=False)
 
     def __str__(self):
         return str(self.id)
@@ -171,7 +207,7 @@ class Cart(models.Model):
 class Customer(models.Model):
     user = models.ForeignKey(User, verbose_name="User", on_delete=models.CASCADE)
     phone = models.CharField(max_length=20, verbose_name="Phone number")
-    adress = models.CharField(max_length=255, verbose_name="Adress")
+    address = models.CharField(max_length=255, verbose_name="Adress")
     email = models.EmailField(max_length=255, verbose_name='Email')
     birthday = models.DateField(help_text="Customer birthdate", verbose_name='Birthday')
 

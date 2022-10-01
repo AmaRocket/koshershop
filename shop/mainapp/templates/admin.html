@@ -1,0 +1,22 @@
+{% extends 'admin/change_form.html' %}
+{% load static %}
+
+{% block admin_change_form_document_ready %}
+{{ block.super }}
+<script>
+    (function($) {
+    $("#id_allergens").on("click", function(){
+        if ($("#id_allergens").prop("checked") == true){
+        $("#id_allergens_volume").prop("readonly", false)
+        $("#id_allergens_volume").val("")
+        $("#id_allergens_volume").css("background", "white")
+
+        }else{
+        $("#id_allergens_volume").prop("readonly", true)
+        $("#id_allergens_volume").val("")
+        $("#id_allergens_volume").css("background", "lightgray")
+        }
+    })
+    })(django.jQuery);
+</script>
+{% endblock %}
